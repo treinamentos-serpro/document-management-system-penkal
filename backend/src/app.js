@@ -16,7 +16,14 @@ const documentRoutes = require('./routes/document.routes');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// Cabeçalhos básicos de segurança (sem depender de libs externas)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  next();
+});
 
 // Endpoint de verificação de saúde.
 app.get('/health', (req, res) => {
@@ -25,6 +32,13 @@ app.get('/health', (req, res) => {
 
 // Rotas do DMS
 app.use(documentRoutes);
+
+// Middleware central de tratamento de erros (deve ser o último registrado).
+app.use((err, req, res, next) => {
+  console.error(err);
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({ error: err.message || 'Erro interno do servidor' });
+});
 
 if (require.main === module) {
   app.listen(PORT, () => {

@@ -2,8 +2,8 @@
 // Concentra as regras de negócio e não depende de detalhes da camada HTTP.
 
 const crypto = require('node:crypto');
-const fs = require('node:fs');
 const defaultRepository = require('../repositories/document.repository');
+const fileStorage = require('../repositories/file-storage');
 
 class DocumentService {
   constructor(documentRepository = defaultRepository) {
@@ -43,7 +43,7 @@ class DocumentService {
 
     const normalizedOwner =
       typeof owner === 'string' && owner.trim().length > 0
-        ? owner.trim()
+        ? owner.trim().slice(0, 100)
         : 'anonymous';
 
     const id = `doc_${crypto.randomUUID()}`;
@@ -64,14 +64,8 @@ class DocumentService {
       this.documentRepository.save(documentRecord);
       return this.#toPublicDocument(documentRecord);
     } catch (err) {
-      // Em caso de falha após a gravação do arquivo, limpa o arquivo físico
-      if (file.path && fs.existsSync(file.path)) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch {
-          // Ignora falha de remoção
-        }
-      }
+      // Em caso de falha após a gravação do arquivo, remove o arquivo físico órfão
+      fileStorage.removeFile(file.path);
       throw err;
     }
   }
@@ -99,7 +93,7 @@ class DocumentService {
       throw error;
     }
 
-    if (!document.path || !fs.existsSync(document.path)) {
+    if (!fileStorage.exists(document.path)) {
       const error = new Error('Arquivo não encontrado no armazenamento');
       error.statusCode = 404;
       throw error;
