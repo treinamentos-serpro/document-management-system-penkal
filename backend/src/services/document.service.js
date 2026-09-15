@@ -11,6 +11,34 @@ class DocumentService {
   }
 
   /**
+   * Cria um erro padronizado com status HTTP.
+   * @param {string} message
+   * @param {number} statusCode
+   * @returns {Error}
+   */
+  #createError(message, statusCode) {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+  }
+
+  /**
+   * Remove um arquivo do armazenamento quando necessário.
+   * @param {string} filePath
+   */
+  #cleanupStoredFile(filePath) {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return;
+    }
+
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      // Ignora falha de remoção
+    }
+  }
+
+  /**
    * Converte um registro interno em formato público seguro para o cliente.
    * Remove detalhes do sistema de arquivos como 'path' e 'filename'.
    * @param {Object} doc
@@ -28,6 +56,64 @@ class DocumentService {
   }
 
   /**
+   * Normaliza o nome do proprietário do documento.
+   * @param {string} owner
+   * @returns {string}
+   */
+  #normalizeOwner(owner) {
+    if (typeof owner !== 'string') {
+      return 'anonymous';
+    }
+
+    const normalizedOwner = owner.trim();
+    return normalizedOwner.length > 0 ? normalizedOwner : 'anonymous';
+  }
+
+  /**
+   * Monta o registro interno persistido no repositório.
+   * @param {Object} file
+   * @param {string} owner
+   * @returns {Object}
+   */
+  #buildDocumentRecord(file, owner) {
+    return {
+      id: `doc_${crypto.randomUUID()}`,
+      originalName: file.originalname,
+      size: file.size,
+      mimeType: file.mimetype,
+      owner: this.#normalizeOwner(owner),
+      uploadedAt: new Date().toISOString(),
+      filename: file.filename,
+      path: file.path,
+    };
+  }
+
+  /**
+   * Busca um documento e falha quando ele não existe.
+   * @param {string} id
+   * @returns {Object}
+   */
+  #getDocumentOrThrow(id) {
+    const document = this.documentRepository.findById(id);
+
+    if (!document) {
+      throw this.#createError('Documento não encontrado', 404);
+    }
+
+    return document;
+  }
+
+  /**
+   * Garante que o arquivo físico do documento continua disponível.
+   * @param {Object} document
+   */
+  #ensureStoredFileExists(document) {
+    if (!document.path || !fs.existsSync(document.path)) {
+      throw this.#createError('Arquivo não encontrado no armazenamento', 404);
+    }
+  }
+
+  /**
    * Processa o upload de um documento e registra seus metadados.
    * @param {Object} params
    * @param {Object} params.file Objeto de arquivo gerado pelo multer
@@ -36,42 +122,16 @@ class DocumentService {
    */
   createDocument({ file, owner }) {
     if (!file) {
-      const error = new Error('Nenhum arquivo enviado');
-      error.statusCode = 400;
-      throw error;
+      throw this.#createError('Nenhum arquivo enviado', 400);
     }
 
-    const normalizedOwner =
-      typeof owner === 'string' && owner.trim().length > 0
-        ? owner.trim()
-        : 'anonymous';
-
-    const id = `doc_${crypto.randomUUID()}`;
-    const uploadedAt = new Date().toISOString();
-
-    const documentRecord = {
-      id,
-      originalName: file.originalname,
-      size: file.size,
-      mimeType: file.mimetype,
-      owner: normalizedOwner,
-      uploadedAt,
-      filename: file.filename,
-      path: file.path,
-    };
+    const documentRecord = this.#buildDocumentRecord(file, owner);
 
     try {
       this.documentRepository.save(documentRecord);
       return this.#toPublicDocument(documentRecord);
     } catch (err) {
-      // Em caso de falha após a gravação do arquivo, limpa o arquivo físico
-      if (file.path && fs.existsSync(file.path)) {
-        try {
-          fs.unlinkSync(file.path);
-        } catch {
-          // Ignora falha de remoção
-        }
-      }
+      this.#cleanupStoredFile(file.path);
       throw err;
     }
   }
@@ -91,19 +151,8 @@ class DocumentService {
    * @returns {Object} Dados do arquivo para envio pelo controller
    */
   getDocumentForDownload(id) {
-    const document = this.documentRepository.findById(id);
-
-    if (!document) {
-      const error = new Error('Documento não encontrado');
-      error.statusCode = 404;
-      throw error;
-    }
-
-    if (!document.path || !fs.existsSync(document.path)) {
-      const error = new Error('Arquivo não encontrado no armazenamento');
-      error.statusCode = 404;
-      throw error;
-    }
+    const document = this.#getDocumentOrThrow(id);
+    this.#ensureStoredFileExists(document);
 
     return {
       originalName: document.originalName,
