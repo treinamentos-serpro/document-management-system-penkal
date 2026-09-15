@@ -1,4 +1,4 @@
-const { test, beforeEach, after } = require('node:test');
+const { test, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
 const fs = require('node:fs');
@@ -9,11 +9,7 @@ const documentRepository = require('../src/repositories/document.repository');
 let server;
 let baseUrl;
 
-beforeEach(() => {
-  documentRepository.clear();
-});
-
-test('configuração do servidor para testes', async () => {
+before(async () => {
   await new Promise((resolve) => {
     server = http.createServer(app);
     server.listen(0, () => {
@@ -22,6 +18,10 @@ test('configuração do servidor para testes', async () => {
       resolve();
     });
   });
+});
+
+beforeEach(() => {
+  documentRepository.clear();
 });
 
 after(() => {
@@ -159,6 +159,10 @@ test('GET /documents/:id/download baixa o arquivo com sucesso', async () => {
 
   const downloadRes = await fetch(`${baseUrl}/documents/${uploadedDoc.id}/download`);
   assert.strictEqual(downloadRes.status, 200);
+  assert.match(
+    downloadRes.headers.get('content-disposition'),
+    /filename="meu-arquivo\.txt"/,
+  );
   const text = await downloadRes.text();
   assert.strictEqual(text, fileContent);
 });
