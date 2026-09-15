@@ -44,6 +44,7 @@ export default function UploadComponent({ onUploadSuccess }) {
         <input
           id="file-input"
           type="file"
+          accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.zip"
           onChange={(event) => setFile(event.target.files?.[0] ?? null)}
         />
       </div>
@@ -55,6 +56,7 @@ export default function UploadComponent({ onUploadSuccess }) {
           value={owner}
           onChange={(event) => setOwner(event.target.value)}
           placeholder="Opcional"
+          maxLength={100}
         />
       </div>
       <button type="submit" disabled={isUploading}>

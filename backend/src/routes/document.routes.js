@@ -1,48 +1,14 @@
 // Rotas de documentos.
-// Configura o middleware de upload (multer com diskStorage) e delega para o controller.
+// Configura o middleware de upload e delega para o controller.
 
 const express = require('express');
 const multer = require('multer');
-const path = require('node:path');
-const fs = require('node:fs');
-const crypto = require('node:crypto');
 const documentController = require('../controllers/document.controller');
+const { upload } = require('../repositories/file-storage');
 
 const router = express.Router();
 
-// Define o diretório local de armazenamento (padrão: backend/storage)
-const storageDir =
-  process.env.STORAGE_DIRECTORY ||
-  path.resolve(__dirname, '../../storage');
-
-// Garante que o diretório de armazenamento existe
-if (!fs.existsSync(storageDir)) {
-  fs.mkdirSync(storageDir, { recursive: true });
-}
-
-// Configuração do multer com diskStorage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, storageDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || '');
-    const safeFilename = `${Date.now()}-${crypto.randomUUID()}${ext}`;
-    cb(null, safeFilename);
-  },
-});
-
-const maxFileSize =
-  Number(process.env.MAX_FILE_SIZE_BYTES) || 10 * 1024 * 1024; // 10 MB padrão
-
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: maxFileSize,
-  },
-});
-
-// Middleware para capturar erros específicos do multer
+// Middleware para capturar erros específicos do multer (tamanho, tipo de arquivo etc.)
 const uploadMiddleware = (req, res, next) => {
   upload.single('file')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
